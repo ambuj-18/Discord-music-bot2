@@ -1,64 +1,46 @@
-import { Client, GatewayIntentBits, SlashCommandBuilder } from "discord.js";
-import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } from "@discordjs/voice";
-import play from "play-dl";
-import dotenv from "dotenv";
-
-dotenv.config();
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { 
+    joinVoiceChannel, 
+    createAudioPlayer, 
+    createAudioResource, 
+    AudioPlayerStatus, 
+    VoiceConnectionStatus,
+    getVoiceConnection
+} = require('@discordjs/voice');
+const play = require('play-dl');
+require('dotenv').config();
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildVoiceStates
-  ]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
 });
 
-const player = createAudioPlayer();
+const prefix = '!';
+const queue = new Map();
 
-client.once("ready", async () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-
-  const playCmd = new SlashCommandBuilder()
-    .setName("play")
-    .setDescription("Play music from YouTube")
-    .addStringOption(opt =>
-      opt.setName("query")
-        .setDescription("YouTube URL or song name")
-        .setRequired(true)
-    );
-
-  await client.application.commands.set([playCmd]);
+client.once('ready', () => {
+    console.log(`Logged in as ${client.user.tag}!`);
 });
 
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isChatInputCommand()) return;
+client.on('messageCreate', async message => {
+    if (message.author.bot || !message.content.startsWith(prefix)) return;
 
-  if (interaction.commandName === "play") {
-    const query = interaction.options.getString("query");
-    const voiceChannel = interaction.member.voice.channel;
+    const args = message.content.slice(prefix.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
 
-    if (!voiceChannel)
-      return interaction.reply("❌ Pehle voice channel join karo");
+    const serverQueue = queue.get(message.guild.id);
 
-    await interaction.deferReply();
-
-    const stream = await play.stream(query);
-    const resource = createAudioResource(stream.stream, {
-      inputType: stream.type
-    });
-
-    const connection = joinVoiceChannel({
-      channelId: voiceChannel.id,
-      guildId: interaction.guild.id,
-      adapterCreator: interaction.guild.voiceAdapterCreator
-    });
-
-    connection.subscribe(player);
-    player.play(resource);
-
-    player.once(AudioPlayerStatus.Playing, () => {
-      interaction.editReply(`🎶 Now Playing: **${query}**`);
-    });
-  }
-});
-
-client.login(process.env.DISCORD_TOKEN);
+    if (command === 'play') {
+        execute(message, serverQueue);
+    } else if (command === 'skip') {
+        skip(message, serverQueue);
+    } else if (command === 'stop') {
+        stop(message, serverQueue);
+    } else if (command === 'pause') {
+        pause(message, serverQueue);
+    } else if (command === 'resume') {
+        resume(message, serverQueue);
